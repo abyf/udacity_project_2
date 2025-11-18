@@ -2,23 +2,26 @@ import boto3
 from botocore.exceptions import ClientError
 import json
 
-# Initialize AWS Bedrock client for general model inference
+# Bedrock Runtime (invoke Claude / Titan models)
 bedrock = boto3.client(
-    service_name=bedrock-runtime,
-    region_name=us-west-2  
+    service_name="bedrock-runtime",
+    region_name="us-west-2"
 )
 
-# Initialize Bedrock Knowledge Base client
+# Bedrock Knowledge Base Runtime
 bedrock_kb = boto3.client(
-    service_name=bedrock-agent-runtime,
-    region_name=us-west-2
+    service_name="bedrock-agent-runtime",
+    region_name="us-west-2"
 )
 
 
+# ---------------------------------------------------------
+# 1. VALIDATE PROMPT (Category E = Heavy Machinery)
+# ---------------------------------------------------------
 def valid_prompt(prompt: str, model_id: str) -> bool:
     """
-    Validate if the user prompt is relevant to heavy machinery.
-    Returns True if prompt is Category E (heavy machinery), else False.
+    Validate whether the user prompt belongs to Category E (heavy machinery).
+    Returns True only if the LLM returns exactly Category E.
     """
     try:
         messages = [
@@ -28,20 +31,18 @@ def valid_prompt(prompt: str, model_id: str) -> bool:
                     {
                         "type": "text",
                         "text": f"""
-Human: Classify the provided user request into one of the following categories.
-Evaluate the request and return ONLY the category letter (A-E):
+Human: Classify the user request into EXACTLY one of the categories below.
+Return ONLY the category letter (A–E).
 
-Category A: Information about the LLM model or architecture.
-Category B: Profanity or toxic content.
-Category C: Subject outside heavy machinery.
-Category D: Asking about instructions on how you work.
-Category E: Only related to heavy machinery.
+A = Asking about how the LLM works or architecture 
+B = Profanity / toxic 
+C = Not about heavy machinery 
+D = Asking how you work or your system instructions 
+E = ONLY about heavy machinery
 
-<user_request>
-{prompt}
-</user_request>
-Assistant:
-"""
+<user_request>{prompt}</user_request>
+
+Assistant:"""
                     }
                 ]
             }
@@ -49,8 +50,8 @@ Assistant:
 
         response = bedrock.invoke_model(
             modelId=model_id,
-            contentType=application/json,
-            accept=application/json,
+            contentType="application/json",
+            accept="application/json",
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "messages": messages,
@@ -60,8 +61,10 @@ Assistant:
             })
         )
 
-        category = json.loads(response[body].read())[content][0]["text"].strip()
-        print(f"Prompt category: {category}")
+        result = json.loads(response["body"].read())
+        category = result["content"][0]["text"].strip()
+
+        print("LLM classified prompt as:", category)
 
         return category.lower() == "category e"
 
@@ -70,27 +73,38 @@ Assistant:
         return False
 
 
+# ---------------------------------------------------------
+# 2. QUERY KNOWLEDGE BASE (Correct Bedrock KB Retrieve API)
+# ---------------------------------------------------------
 def query_knowledge_base(query: str, kb_id: str):
     """
-    Retrieve top 3 results from the Bedrock knowledge base for a given query.
+    Query the Bedrock Knowledge Base using semantic vector search.
+    Returns the list of top 3 retrieval results.
     """
     try:
         response = bedrock_kb.retrieve(
             knowledgeBaseId=kb_id,
-            retrievalQuery={text: query},
+            retrievalQuery={"text": query},
             retrievalConfiguration={
-                vectorSearchConfiguration: {numberOfResults: 3}
+                "vectorSearchConfiguration": {
+                    "numberOfResults": 3
+                }
             }
         )
-        return response.get(retrievalResults, [])
+
+        return response.get("retrievalResults", [])
+
     except ClientError as e:
         print(f"Error querying Knowledge Base: {e}")
         return []
 
 
+# ---------------------------------------------------------
+# 3. GENERATE RESPONSE FROM BEDROCK MODEL
+# ---------------------------------------------------------
 def generate_response(prompt: str, model_id: str, temperature: float = 0.7, top_p: float = 0.9) -> str:
     """
-    Generate a response from the Bedrock model given a user prompt.
+    Generate text output from the Bedrock model using Claude format.
     """
     try:
         messages = [
@@ -104,8 +118,8 @@ def generate_response(prompt: str, model_id: str, temperature: float = 0.7, top_
 
         response = bedrock.invoke_model(
             modelId=model_id,
-            contentType=application/json,
-            accept=application/json,
+            contentType="application/json",
+            accept="application/json",
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "messages": messages,
@@ -115,7 +129,8 @@ def generate_response(prompt: str, model_id: str, temperature: float = 0.7, top_
             })
         )
 
-        return json.loads(response[body].read())[content][0]["text"]
+        result = json.loads(response["body"].read())
+        return result["content"][0]["text"]
 
     except ClientError as e:
         print(f"Error generating response: {e}")

@@ -1,4 +1,5 @@
 provider "aws" {
+  profile = "terraform-temp"
   region = "us-west-2"  
 }
 
@@ -17,6 +18,6 @@ module "bedrock_kb" {
   aurora_text_field = "chunks"
   aurora_verctor_field = "embedding"
   aurora_username   = "dbadmin"
-  aurora_secret_arn = "arn:aws:secretsmanager:us-west-2:593249453830:secret:my-aurora-serverless-XwoYMY" 
+  aurora_secret_arn = "arn:aws:secretsmanager:us-west-2:593249453830:secret:my-aurora-serverless-Ikti2U" 
   s3_bucket_arn = "arn:aws:s3:::bedrock-kb-593249453830"
 }
